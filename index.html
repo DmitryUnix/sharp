@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SwimTrack</title>
+    <link rel="stylesheet" href="main.css">
+    <script>
+        function showPage(pageId) {
+
+            const sections = document.querySelectorAll('.spa-section');
+            sections.forEach(s => s.classList.remove('active'));
+
+
+            const activeSection = document.getElementById(pageId);
+            if (activeSection) activeSection.classList.add('active');
+
+
+            window.scrollTo(0, 0);
+        }
+    </script>
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="javascript:void(0)" onclick="showPage('home')" class="nav-logo">Бассейн "SwimTrack"</a>
+        <div class="nav-links">
+            <a href="javascript:void(0)" onclick="showPage('styles')">Техника стилей</a>
+            <a href="javascript:void(0)" onclick="showPage('exercises')">Упражнения</a>
+            <a href="javascript:void(0)" onclick="showPage('norms')">Нормативы РБ</a>
+            <a href="javascript:void(0)" onclick="showPage('equipment')">Экипировка</a>
+            <a href="javascript:void(0)" onclick="showPage('history')">История</a>
+            <a href="javascript:void(0)" onclick="showPage('nutrition')">Питание</a>
+            <a href="javascript:void(0)" onclick="showPage('contacts')">Контакты</a>
+        </div>
+
+    </nav>
+
+    <div id="home" class="spa-section active">
+        <div style="text-align: center; margin-top: 30px;">
+            <h1 style="color: #0056b3; font-size: 36px;">SwimTrack</h1>
+            <p style="font-size: 18px; color: #1f1f1f;">Присоединяйтесь к команде, ведите учет рекордов и считайте разряды!
+            </p>
+        </div>
+        <div class="container">
+            <form action="/register" method="POST" class="box">
+                <h2>Новый пловец</h2>
+                <input type="text" maxlength="25" name="login" placeholder="Придумайте логин" required>
+                <input type="password" maxlength="10" name="password" placeholder="Пароль" required>
+                <button type="submit">Зарегистрироваться</button>
+            </form>
+            <form action="/login" method="POST" class="box">
+                <h2>Вход в кабинет</h2>
+                <input type="text" maxlength="25" name="login" placeholder="Логин" required>
+                <input type="password" maxlength="10" name="password" placeholder="Пароль" required>
+                <button type="submit">Войти</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="styles" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 800px;">
+                <h2>4 Основных стиля</h2>
+                <div class="user-card"><b>Кроль (Вольный стиль):</b> Самый быстрый стиль. Основан на поочередных гребках
+                    руками и ударах ногами «ножницами».</div>
+                <div class="user-card"><b>На спине:</b> Похож на кроль, но лицо всегда над водой. Важно следить за
+                    положением таза, чтобы он не проваливался.</div>
+                <div class="user-card"><b>Брасс:</b> Самый медленный, но экономичный стиль. Движения напоминают лягушку.
+                    Важна синхронизация толчка и скольжения.</div>
+                <div class="user-card"><b>Баттерфляй (Дельфин):</b> Самый сложный технически. Мощные одновременные
+                    гребки руками и волнообразное движение телом.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="exercises" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 800px;">
+                <h2>Тренировочные этапы</h2>
+                <h3>1. Разминка (Суша + Вода)</h3>
+                <p>Вращения суставов на суше (5 мин). В воде: 200м спокойным кролем для «чувства воды».</p>
+                <h3>2. Основная серия для ПРОФИ</h3>
+                <div class="user-card"><b>Гипоксия:</b> 8 по 50м кролем, дышать на 3, 5, 7, 9 гребков. Развивает
+                    выносливость легких.</div>
+                <div class="user-card"><b>Мощность:</b> 4 по 25м «на кулаках». После этого ладони будут лучше «цеплять»
+                    воду.</div>
+                <h3>3. Заминка</h3>
+                <p>100-200м максимально расслабленно любым стилем, чтобы вывести молочную кислоту из мышц.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="norms" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 900px;">
+                <h2>Единая спортивная классификация РБ</h2>
+                <p>Дистанция 50м, Вольный стиль (Мужчины)</p>
+                <table class="records-table">
+                    <tr>
+                        <th>Разряд</th>
+                        <th>25м бассейн</th>
+                        <th>50м бассейн</th>
+                    </tr>
+                    <tr>
+                        <td>МСМК</td>
+                        <td>21.60</td>
+                        <td>22.10</td>
+                    </tr>
+                    <tr>
+                        <td>МС</td>
+                        <td>23.20</td>
+                        <td>24.00</td>
+                    </tr>
+                    <tr>
+                        <td>КМС</td>
+                        <td>24.50</td>
+                        <td>25.50</td>
+                    </tr>
+                    <tr>
+                        <td>I разряд</td>
+                        <td>26.50</td>
+                        <td>27.50</td>
+                    </tr>
+                    <tr>
+                        <td>II разряд</td>
+                        <td>29.50</td>
+                        <td>30.50</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="equipment" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 800px;">
+                <h2>Что нужно пловцу?</h2>
+                <ul>
+                    <li><b>Очки:</b> Для тренировок берите мягкие, для стартов жесткие "стекляшки".</li>
+                    <li><b>Шапочка:</b> Силиконовая лучше держится и защищает волосы.</li>
+                    <li><b>Инвентарь:</b> Колобашка для рук, ласты для отработки удара и лопатки для силы гребка.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="history" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 800px;">
+                <h2>Плавание в Беларуси</h2>
+                <p>Белорусская школа плавания известна на весь мир. Главная звезда Александра Герасименя («Золотая
+                    рыбка»), призер Олимпийских игр.</p>
+                <p>На сегодняшний день в РБ работает более 300 бассейнов, а плавание является вторым по популярности
+                    видом спорта после футбола.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="nutrition" class="spa-section">
+        <div class="container">
+            <div class="admin-panel" style="width: 800px;">
+                <h2>Рацион чемпиона</h2>
+                <div class="user-card"><b>За 2 часа до:</b> Сложные углеводы (овсянка, паста). Энергия для мышц.</div>
+                <div class="user-card"><b>Сразу после:</b> Углеводно-белковое окно. Банан или протеиновый батончик.
+                </div>
+                <div class="user-card"><b>Во время:</b> Пейте воду небольшими глотками каждые 15 минут.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="contacts" class="spa-section">
+        <div class="container">
+            <div class="admin-panel">
+                <h2>Свяжитесь с нами</h2>
+                <p><b>Адрес:</b> г. Брест, ул. Московская 267, бассейн "SwimTrack"</p>
+                <p><b>Телефон:</b> +375 (33) 333-33-33</p>
+                <p><b>Email:</b> swim@belarus.by</p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
