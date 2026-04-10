@@ -2,275 +2,199 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const path = require('path');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const db = new sqlite3.Database('./database.db');
 
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(express.static(__dirname));
+// Настройка приложения
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(__dirname)); // Чтобы видел main.css и index.html
+app.use(session({
+    secret: 'swimtrack_secret_2026',
+    resave: false,
+    saveUninitialized: true
+}));
 
+// База данных
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT UNIQUE, password TEXT, role TEXT)`);
-    db.run(`CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, style TEXT, distance INTEGER, pool_type INTEGER, time TEXT, FOREIGN KEY(user_id) REFERENCES users(id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, style TEXT, distance INTEGER, pool_type TEXT, time TEXT)`);
+    // Создаем админа по умолчанию
     db.get("SELECT * FROM users WHERE login = 'admin'", (err, row) => {
         if (!row) db.run("INSERT INTO users (login, password, role) VALUES ('admin', 'admin', 'admin')");
     });
 });
 
-app.post('/edit-user', (req, res) => {
-    const { id, newLogin } = req.body;
-    db.run(`UPDATE users SET login = ? WHERE id = ?`, [newLogin, id], (err) => {
-        if (err) return res.status(500).send("Логин занят");
-        res.send("OK");
-    });
-});
+// Вспомогательная функция парсинга времени (из "01:05.50" в секунды)
+function parseTimeToSeconds(t) {
+    if (!t.includes(':')) return parseFloat(t.replace(',', '.'));
+    const parts = t.split(':');
+    return parseInt(parts[0]) * 60 + parseFloat(parts[1].replace(',', '.'));
+}
 
-app.post('/delete-user', (req, res) => {
-    const { id } = req.body;
-    db.run(`DELETE FROM users WHERE id = ?`, [id], () => {
-        db.run(`DELETE FROM records WHERE user_id = ?`, [id]);
-        res.send("OK");
-    });
-});
+// Рендер страницы личного кабинета (Dashboard)
+function renderDashboard(user, records, error = null) {
+    const tableRows = records.map(r => `<tr><td>${r.style}</td><td>${r.distance}м</td><td>${r.pool_type}м</td><td><b>${r.time}</b></td></tr>`).join('');
+    
+    return `
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="main.css">
+        <title>Кабинет SwimTrack</title>
+        <script>
+            const distData = {
+                "Кроль": [50, 100, 200, 400, 800, 1500],
+                "Брасс": [50, 100, 200],
+                "На спине": [50, 100, 200],
+                "Баттерфляй": [50, 100, 200]
+            };
 
+            function updateDists(sId, dId) {
+                const s = document.getElementById(sId).value;
+                const d = document.getElementById(dId);
+                d.innerHTML = distData[s].map(n => '<option value="'+n+'">'+n+' м</option>').join('');
+            }
+
+            function calcRank() {
+                const timeStr = document.getElementById('c-time').value;
+                const dist = parseInt(document.getElementById('c-dist').value);
+                const resDiv = document.getElementById('r-res');
+                const bar = document.getElementById('p-bar');
+                
+                if (!timeStr || !timeStr.includes('.')) {
+                    resDiv.innerHTML = "Введите время (напр. 27.50 или 01:05.00)";
+                    return;
+                }
+
+                // Логика нормативов (Пример для 50м вольный стиль)
+                let sec = 0;
+                if(timeStr.includes(':')) {
+                    let p = timeStr.split(':');
+                    sec = parseInt(p[0])*60 + parseFloat(p[1]);
+                } else { sec = parseFloat(timeStr); }
+
+                let rank = "Любитель"; let pct = 15; let clr = "#dc3545";
+                
+                // Упрощенная таблица для примера (КМС/МС)
+                if (dist === 50) {
+                    if (sec <= 24.0) { rank="МС"; pct=100; clr="#28a745"; }
+                    else if (sec <= 25.5) { rank="КМС"; pct=80; clr="#007bff"; }
+                    else if (sec <= 27.5) { rank="1 разряд"; pct=60; clr="#17a2b8"; }
+                    else if (sec <= 30.5) { rank="2 разряд"; pct=40; clr="#ffc107"; }
+                } else {
+                    rank = "Результат принят"; pct = 50; clr = "#6c757d";
+                }
+
+                document.getElementById('p-cont').style.display = 'block';
+                bar.style.width = pct + '%';
+                bar.style.backgroundColor = clr;
+                resDiv.innerHTML = "Ваш уровень: <b>" + rank + "</b>";
+            }
+
+            window.onload = () => { 
+                updateDists('s-sel', 'd-sel'); 
+                updateDists('c-style', 'c-dist');
+            };
+        </script>
+    </head>
+    <body>
+        <nav class="navbar">
+            <a href="/" class="nav-logo">SwimTrack</a>
+            <div class="nav-links"><span style="color:white">Пловец: ${user.login}</span></div>
+            <a href="/logout" class="logout-btn">Выйти</a>
+        </nav>
+        <div class="container" style="max-width:1100px;">
+            <div class="box">
+                <h2>Новый рекорд</h2>
+                <form action="/add-record" method="POST">
+                    <label>Стиль:</label>
+                    <select name="style" id="s-sel" class="form-select" onchange="updateDists('s-sel', 'd-sel')">
+                        <option>Кроль</option><option>Брасс</option><option>На спине</option><option>Баттерфляй</option>
+                    </select>
+                    <label>Дистанция:</label>
+                    <select name="distance" id="d-sel" class="form-select"></select>
+                    <label>Бассейн:</label>
+                    <select name="pool_type" class="form-select">
+                        <option value="25">Короткая вода (25м)</option>
+                        <option value="50">Длинная вода (50м)</option>
+                    </select>
+                    <label>Время:</label>
+                    <input type="text" name="time" placeholder="00:00.00" maxlength="8" required>
+                    <button type="submit">Сохранить</button>
+                </form>
+            </div>
+
+            <div style="flex:2;">
+                <div class="box" style="width:auto; margin-bottom:20px;">
+                    <h2>Мои рекорды</h2>
+                    <table class="records-table">
+                        <tr><th>Стиль</th><th>Дистанция</th><th>Вода</th><th>Время</th></tr>
+                        ${tableRows}
+                    </table>
+                </div>
+                <div class="box" style="width:auto; background:#eef7ff;">
+                    <h2>Калькулятор разрядов (Вольный)</h2>
+                    <select id="c-style" class="form-select" style="display:none;"><option>Кроль</option></select>
+                    <label>Дистанция:</label>
+                    <select id="c-dist" class="form-select"></select>
+                    <label>Время:</label>
+                    <input type="text" id="c-time" placeholder="00:25.50" maxlength="8">
+                    <button onclick="calcRank()">Рассчитать</button>
+                    <div id="p-cont" style="display:none; background:#ddd; height:20px; border-radius:10px; margin-top:15px; overflow:hidden;">
+                        <div id="p-bar" style="width:0%; height:100%; transition:0.5s;"></div>
+                    </div>
+                    <p id="r-res" style="text-align:center; margin-top:10px;"></p>
+                </div>
+            </div>
+        </div>
+    </body></html>`;
+}
+
+// Маршруты
 app.post('/register', (req, res) => {
     const { login, password } = req.body;
-    if (login.toLowerCase() === 'admin') return res.send("<h1>Ошибка</h1><a href='/'>Назад</a>");
-    db.run(`INSERT INTO users (login, password, role) VALUES (?, ?, 'user')`, [login, password], (err) => {
-        if (err) return res.send("<h1>Логин занят</h1><a href='/'>Назад</a>");
-        res.send("<h1>Успех!</h1><a href='/'>Войти</a>");
-    });
-});
-
-app.post('/add-record', (req, res) => {
-    const { user_id, style, distance, pool_type, time } = req.body;
-    db.run(`INSERT INTO records (user_id, style, distance, pool_type, time) VALUES (?, ?, ?, ?, ?)`, [user_id, style, distance, pool_type, time], () => {
-        res.redirect(307, '/login');
+    db.run("INSERT INTO users (login, password, role) VALUES (?, ?, 'user')", [login, password], (err) => {
+        if (err) return res.send("Ошибка: логин занят. <a href='/'>Назад</a>");
+        res.send("Регистрация успешна! <a href='/'>Войти</a>");
     });
 });
 
 app.post('/login', (req, res) => {
     const { login, password } = req.body;
-    db.get(`SELECT * FROM users WHERE login = ? AND password = ?`, [login, password], (err, user) => {
-        if (err || !user) return res.send("<h1>Ошибка</h1><p>Неверные данные.</p><a href='/'>Назад</a>");
-
-        const navHTML = `
-            <nav class="navbar">
-                <a href="/" class="nav-logo">SwimTrack</a>
-                <div class="nav-links"><span style="color:white;">Привет, ${user.login}!</span></div>
-                <a href="/" class="logout-btn">Выйти</a>
-            </nav>`;
-
-        if (user.role === 'admin') {
-            db.all(`SELECT id, login, role FROM users`, [], (err, rows) => {
-                let userListHTML = rows.map(u => `
-                    <div class="user-card" id="user-row-${u.id}" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <div id="display-${u.id}"><span>ID: ${u.id} | <b id="login-text-${u.id}">${u.login}</b></span></div>
-                        <div>
-                            ${u.role !== 'admin' ? `
-                                <button onclick="editUser(${u.id})" style="background:#ffc107; color:black; width:auto; padding:5px 10px;">Изменить</button>
-                                <button onclick="confirmDelete(${u.id}, '${u.login}')" class="btn-delete" style="width:auto; padding:5px 10px; background:#dc3545;">Удалить</button>
-                            ` : '<i>Admin</i>'}
-                        </div>
-                    </div>`).join('');
-
-                res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><link rel="stylesheet" href="main.css"><title>Админка</title>
-                    <script>
-                        async function confirmDelete(id, login) {
-                            if (confirm("Удалить " + login + "?")) {
-                                await fetch('/delete-user', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'id='+id });
-                                document.getElementById('user-row-'+id).remove();
-                            }
-                        }
-                        function editUser(id) {
-                            const current = document.getElementById('login-text-'+id).innerText;
-                            document.getElementById('display-'+id).innerHTML = '<input type="text" id="input-'+id+'" value="'+current+'" style="width:150px; margin:0;"><button onclick="saveUser('+id+')" style="background:#28a745; width:auto; margin-left:5px;">OK</button>';
-                        }
-                        async function saveUser(id) {
-                            const val = document.getElementById('input-'+id).value;
-                            const res = await fetch('/edit-user', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'id='+id+'&newLogin='+val });
-                            if (res.ok) location.reload();
-                        }
-                    </script></head>
-                    <body>${navHTML}<div class="container"><div class="admin-panel" style="width:700px;"><h2>Управление пловцами</h2>${userListHTML}</div></div></body></html>`);
-            });
-        } else {
-            db.all(`SELECT * FROM records WHERE user_id = ?`, [user.id], (err, records) => {
-                let recordsHTML = records.map(r => `<tr><td>${r.style}</td><td>${r.distance}м</td><td>${r.pool_type}м</td><td><b>${r.time}</b></td></tr>`).join('');
-                res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><link rel="stylesheet" href="main.css"><title>Кабинет</title>
-                    <script>
-                        function calcRank() {
-                            const timeInput = document.getElementById('calc-time').value;
-                            const distance = document.getElementById('calc-distance').value;
-                            const style = document.getElementById('calc-style').value;
-                            const result = document.getElementById('rank-result');
-                            const bar = document.getElementById('progress-bar');
-                            const cont = document.getElementById('progress-container');
-
-                            // Проверка формата времени
-                            const timePattern = /^\\d{1,2}:\\d{2}\\.\\d{2}$/;
-                            if (!timePattern.test(timeInput)) {
-                                result.innerHTML = "Введите время в формате ММ:СС.сс (например 00:26.50)";
-                                return;
-                            }
-
-                            const timeParts = timeInput.split(':');
-                            const minutes = parseInt(timeParts[0]);
-                            const secParts = timeParts[1].split('.');
-                            const seconds = parseInt(secParts[0]);
-                            const centiseconds = parseInt(secParts[1]);
-                            
-                            const totalTime = minutes * 60 + seconds + centiseconds / 100;
-
-                            if (isNaN(totalTime) || totalTime <= 0) {
-                                result.innerHTML = "Введите корректное время";
-                                return;
-                            }
-
-                            // Нормативы для 50м кроль (бассейн 50м)
-                            let rank = "Любитель";
-                            let percent = 20;
-                            let color = "#dc3545";
-
-                            if (distance == 50) {
-                                if (totalTime <= 24.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 25.5) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 27.5) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 30.5) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            } else if (distance == 100) {
-                                if (totalTime <= 52.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 56.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 62.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 68.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            } else if (distance == 200) {
-                                if (totalTime <= 110.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 120.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 135.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 150.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            } else if (distance == 400) {
-                                if (totalTime <= 235.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 260.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 290.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 320.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            } else if (distance == 800) {
-                                if (totalTime <= 490.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 540.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 600.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 660.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            } else if (distance == 1500) {
-                                if (totalTime <= 940.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                                else if (totalTime <= 1020.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                                else if (totalTime <= 1140.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
-                                else if (totalTime <= 1260.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
-                            }
-
-                            cont.style.display = 'block';
-                            bar.style.width = percent + '%';
-                            bar.style.backgroundColor = color;
-                            result.innerHTML = "Ваш разряд: <b>" + rank + "</b>";
-                        }
-
-                        function updateTimePlaceholder() {
-                            const input = document.getElementById('calc-time');
-                            input.value = '';
-                        }
-                    </script></head>
-                    <body>${navHTML}
-                        <div class="container" style="max-width: 1100px;">
-                            <div class="box">
-                                <h2>Новый рекорд</h2>
-                                <form action="/add-record" method="POST">
-                                    <input type="hidden" name="user_id" value="${user.id}">
-                                    <label for="style"><b>Стиль:</b></label>
-                                    <select name="style" id="style" class="form-select" onchange="updateDistanceOptions()">
-                                        <option value="Кроль">Кроль (Вольный стиль)</option>
-                                        <option value="На спине">На спине</option>
-                                        <option value="Брасс">Брасс</option>
-                                        <option value="Баттерфляй">Баттерфляй (Дельфин)</option>
-                                    </select>
-                                    
-                                    <label for="distance"><b>Дистанция (м):</b></label>
-                                    <select name="distance" id="distance" class="form-select">
-                                        <option value="50">50 м</option>
-                                        <option value="100">100 м</option>
-                                        <option value="200">200 м</option>
-                                        <option value="400">400 м</option>
-                                        <option value="800">800 м</option>
-                                        <option value="1500">1500 м</option>
-                                    </select>
-                                    
-                                    <label for="pool_type"><b>Тип бассейна:</b></label>
-                                    <select name="pool_type" id="pool_type" class="form-select">
-                                        <option value="25">Короткая вода (25 м)</option>
-                                        <option value="50">Длинная вода (50 м)</option>
-                                    </select>
-                                    
-                                    <label for="time"><b>Время (формат ММ:СС.сс):</b></label>
-                                    <input type="text" name="time" id="time" placeholder="00:00.00" maxlength="8" required pattern="\\d{1,2}:\\d{2}\\.\\d{2}" title="Формат: ММ:СС.сс (например 00:26.50)">
-                                    <button type="submit">Добавить</button>
-                                </form>
-                            </div>
-                            <div style="flex:2;">
-                                <div class="box" style="width:auto; margin-bottom:20px;">
-                                    <h2>Мои рекорды</h2>
-                                    <table class="records-table"><tr><th>Стиль</th><th>Дистанция</th><th>Бассейн</th><th>Время</th></tr>${recordsHTML}</table>
-                                </div>
-                                <div class="box" style="width:auto; background:#eef7ff;">
-                                    <h2>Калькулятор разряда</h2>
-                                    <p style="font-size:13px; color:#666; margin-top:0;">Выберите дистанцию и стиль, затем введите ваше время в формате ММ:СС.сс</p>
-                                    
-                                    <label for="calc-distance"><b>Дистанция (м):</b></label>
-                                    <select id="calc-distance" class="form-select">
-                                        <option value="50">50 м</option>
-                                        <option value="100">100 м</option>
-                                        <option value="200">200 м</option>
-                                        <option value="400">400 м</option>
-                                        <option value="800">800 м</option>
-                                        <option value="1500">1500 м</option>
-                                    </select>
-                                    
-                                    <label for="calc-style"><b>Стиль:</b></label>
-                                    <select id="calc-style" class="form-select">
-                                        <option value="Кроль">Кроль (Вольный стиль)</option>
-                                    </select>
-                                    
-                                    <label for="calc-time"><b>Время (ММ:СС.сс):</b></label>
-                                    <input type="text" id="calc-time" placeholder="00:00.00" maxlength="8" onfocus="this.setAttribute('placeholder', '')" onblur="this.setAttribute('placeholder', '00:00.00')">
-                                    <button onclick="calcRank()">Узнать разряд</button>
-                                    <div id="progress-container" style="background:#ddd; height:20px; border-radius:10px; margin-top:15px; display:none; overflow:hidden;">
-                                        <div id="progress-bar" style="width:0%; height:100%; transition:width 0.5s; background:#007bff;"></div>
-                                    </div>
-                                    <p id="rank-result" style="margin-top:10px;"></p>
-                                </div>
-                            </div>
-                        </div>
-                        <script>
-                            function updateDistanceOptions() {
-                                const style = document.getElementById('style').value;
-                                const distanceSelect = document.getElementById('distance');
-                                const currentDistance = distanceSelect.value;
-                                
-                                let options = [];
-                                if (style === 'Кроль') {
-                                    options = [50, 100, 200, 400, 800, 1500];
-                                } else if (style === 'На спине' || style === 'Брасс' || style === 'Баттерфляй') {
-                                    options = [50, 100, 200];
-                                }
-                                
-                                distanceSelect.innerHTML = '';
-                                options.forEach(d => {
-                                    const opt = document.createElement('option');
-                                    opt.value = d;
-                                    opt.textContent = d + ' м';
-                                    if (d == currentDistance) opt.selected = true;
-                                    distanceSelect.appendChild(opt);
-                                });
-                            }
-                        </script>
-                    </body></html>`);
-            });
-        }
+    db.get("SELECT * FROM users WHERE login = ? AND password = ?", [login, password], (err, user) => {
+        if (!user) return res.send("Неверный вход. <a href='/'>Назад</a>");
+        req.session.userId = user.id;
+        db.all("SELECT * FROM records WHERE user_id = ?", [user.id], (err, records) => {
+            res.send(renderDashboard(user, records));
+        });
     });
 });
 
-app.listen(3000, () => console.log('OK: http://localhost:3000'));
+app.post('/add-record', (req, res) => {
+    if (!req.session.userId) return res.redirect('/');
+    const { style, distance, pool_type, time } = req.body;
+    db.run("INSERT INTO records (user_id, style, distance, pool_type, time) VALUES (?, ?, ?, ?, ?)", 
+        [req.session.userId, style, distance, pool_type, time], () => {
+        res.redirect(307, '/login-auto'); // Технический редирект для обновления данных
+    });
+});
+
+// Авто-логин после добавления записи
+app.post('/login-auto', (req, res) => {
+    db.get("SELECT * FROM users WHERE id = ?", [req.session.userId], (err, user) => {
+        db.all("SELECT * FROM records WHERE user_id = ?", [user.id], (err, records) => {
+            res.send(renderDashboard(user, records));
+        });
+    });
+});
+
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    res.redirect('/');
+});
+
+app.listen(3000, () => console.log('Jarvis Online: http://localhost:3000'));
