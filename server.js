@@ -101,29 +101,78 @@ app.post('/login', (req, res) => {
                     <script>
                         function calcRank() {
                             const timeInput = document.getElementById('calc-time').value;
-                            const time = parseFloat(timeInput.replace(',', '.'));
+                            const distance = document.getElementById('calc-distance').value;
+                            const style = document.getElementById('calc-style').value;
                             const result = document.getElementById('rank-result');
                             const bar = document.getElementById('progress-bar');
                             const cont = document.getElementById('progress-container');
 
-                            if (isNaN(time) || time <= 0) {
-                                result.innerHTML = "Введите время";
+                            // Проверка формата времени
+                            const timePattern = /^\\d{1,2}:\\d{2}\\.\\d{2}$/;
+                            if (!timePattern.test(timeInput)) {
+                                result.innerHTML = "Введите время в формате ММ:СС.сс (например 00:26.50)";
                                 return;
                             }
 
+                            const timeParts = timeInput.split(':');
+                            const minutes = parseInt(timeParts[0]);
+                            const secParts = timeParts[1].split('.');
+                            const seconds = parseInt(secParts[0]);
+                            const centiseconds = parseInt(secParts[1]);
+                            
+                            const totalTime = minutes * 60 + seconds + centiseconds / 100;
+
+                            if (isNaN(totalTime) || totalTime <= 0) {
+                                result.innerHTML = "Введите корректное время";
+                                return;
+                            }
+
+                            // Нормативы для 50м кроль (бассейн 50м)
                             let rank = "Любитель";
                             let percent = 20;
                             let color = "#dc3545";
 
-                            if (time <= 24.0) { rank = "МС"; percent = 100; color = "#28a745"; }
-                            else if (time <= 25.5) { rank = "КМС"; percent = 85; color = "#007bff"; }
-                            else if (time <= 27.5) { rank = "1 разряд"; percent = 65; color = "#17a2b8"; }
-                            else if (time <= 30.5) { rank = "2 разряд"; percent = 45; color = "#ffc107"; }
+                            if (distance == 50) {
+                                if (totalTime <= 24.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 25.5) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 27.5) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 30.5) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            } else if (distance == 100) {
+                                if (totalTime <= 52.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 56.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 62.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 68.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            } else if (distance == 200) {
+                                if (totalTime <= 110.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 120.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 135.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 150.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            } else if (distance == 400) {
+                                if (totalTime <= 235.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 260.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 290.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 320.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            } else if (distance == 800) {
+                                if (totalTime <= 490.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 540.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 600.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 660.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            } else if (distance == 1500) {
+                                if (totalTime <= 940.0) { rank = "МС"; percent = 100; color = "#28a745"; }
+                                else if (totalTime <= 1020.0) { rank = "КМС"; percent = 85; color = "#007bff"; }
+                                else if (totalTime <= 1140.0) { rank = "I разряд"; percent = 65; color = "#17a2b8"; }
+                                else if (totalTime <= 1260.0) { rank = "II разряд"; percent = 45; color = "#ffc107"; }
+                            }
 
                             cont.style.display = 'block';
                             bar.style.width = percent + '%';
                             bar.style.backgroundColor = color;
                             result.innerHTML = "Ваш разряд: <b>" + rank + "</b>";
+                        }
+
+                        function updateTimePlaceholder() {
+                            const input = document.getElementById('calc-time');
+                            input.value = '';
                         }
                     </script></head>
                     <body>${navHTML}
@@ -132,8 +181,32 @@ app.post('/login', (req, res) => {
                                 <h2>Новый рекорд</h2>
                                 <form action="/add-record" method="POST">
                                     <input type="hidden" name="user_id" value="${user.id}">
-                                    <select name="style" class="form-select"><option>Кроль</option><option>Брасс</option></select>
-                                    <input type="text" name="time" placeholder="26.50">
+                                    <label for="style"><b>Стиль:</b></label>
+                                    <select name="style" id="style" class="form-select" onchange="updateDistanceOptions()">
+                                        <option value="Кроль">Кроль (Вольный стиль)</option>
+                                        <option value="На спине">На спине</option>
+                                        <option value="Брасс">Брасс</option>
+                                        <option value="Баттерфляй">Баттерфляй (Дельфин)</option>
+                                    </select>
+                                    
+                                    <label for="distance"><b>Дистанция (м):</b></label>
+                                    <select name="distance" id="distance" class="form-select">
+                                        <option value="50">50 м</option>
+                                        <option value="100">100 м</option>
+                                        <option value="200">200 м</option>
+                                        <option value="400">400 м</option>
+                                        <option value="800">800 м</option>
+                                        <option value="1500">1500 м</option>
+                                    </select>
+                                    
+                                    <label for="pool_type"><b>Тип бассейна:</b></label>
+                                    <select name="pool_type" id="pool_type" class="form-select">
+                                        <option value="25">Короткая вода (25 м)</option>
+                                        <option value="50">Длинная вода (50 м)</option>
+                                    </select>
+                                    
+                                    <label for="time"><b>Время (формат ММ:СС.сс):</b></label>
+                                    <input type="text" name="time" id="time" placeholder="00:00.00" maxlength="8" required pattern="\\d{1,2}:\\d{2}\\.\\d{2}" title="Формат: ММ:СС.сс (например 00:26.50)">
                                     <button type="submit">Добавить</button>
                                 </form>
                             </div>
@@ -143,8 +216,26 @@ app.post('/login', (req, res) => {
                                     <table class="records-table"><tr><th>Стиль</th><th>Дистанция</th><th>Бассейн</th><th>Время</th></tr>${recordsHTML}</table>
                                 </div>
                                 <div class="box" style="width:auto; background:#eef7ff;">
-                                    <h2>Калькулятор</h2>
-                                    <input type="text" id="calc-time" placeholder="Время на 50м">
+                                    <h2>Калькулятор разряда</h2>
+                                    <p style="font-size:13px; color:#666; margin-top:0;">Выберите дистанцию и стиль, затем введите ваше время в формате ММ:СС.сс</p>
+                                    
+                                    <label for="calc-distance"><b>Дистанция (м):</b></label>
+                                    <select id="calc-distance" class="form-select">
+                                        <option value="50">50 м</option>
+                                        <option value="100">100 м</option>
+                                        <option value="200">200 м</option>
+                                        <option value="400">400 м</option>
+                                        <option value="800">800 м</option>
+                                        <option value="1500">1500 м</option>
+                                    </select>
+                                    
+                                    <label for="calc-style"><b>Стиль:</b></label>
+                                    <select id="calc-style" class="form-select">
+                                        <option value="Кроль">Кроль (Вольный стиль)</option>
+                                    </select>
+                                    
+                                    <label for="calc-time"><b>Время (ММ:СС.сс):</b></label>
+                                    <input type="text" id="calc-time" placeholder="00:00.00" maxlength="8" onfocus="this.setAttribute('placeholder', '')" onblur="this.setAttribute('placeholder', '00:00.00')">
                                     <button onclick="calcRank()">Узнать разряд</button>
                                     <div id="progress-container" style="background:#ddd; height:20px; border-radius:10px; margin-top:15px; display:none; overflow:hidden;">
                                         <div id="progress-bar" style="width:0%; height:100%; transition:width 0.5s; background:#007bff;"></div>
@@ -153,6 +244,29 @@ app.post('/login', (req, res) => {
                                 </div>
                             </div>
                         </div>
+                        <script>
+                            function updateDistanceOptions() {
+                                const style = document.getElementById('style').value;
+                                const distanceSelect = document.getElementById('distance');
+                                const currentDistance = distanceSelect.value;
+                                
+                                let options = [];
+                                if (style === 'Кроль') {
+                                    options = [50, 100, 200, 400, 800, 1500];
+                                } else if (style === 'На спине' || style === 'Брасс' || style === 'Баттерфляй') {
+                                    options = [50, 100, 200];
+                                }
+                                
+                                distanceSelect.innerHTML = '';
+                                options.forEach(d => {
+                                    const opt = document.createElement('option');
+                                    opt.value = d;
+                                    opt.textContent = d + ' м';
+                                    if (d == currentDistance) opt.selected = true;
+                                    distanceSelect.appendChild(opt);
+                                });
+                            }
+                        </script>
                     </body></html>`);
             });
         }
